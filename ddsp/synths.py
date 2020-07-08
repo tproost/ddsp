@@ -149,6 +149,84 @@ class FilteredNoise(processors.Processor):
                                  magnitudes,
                                  window_size=self.window_size)
 
+@gin.register
+class FilteredNoiseHpLp(processors.Processor):
+  """Synthesize audio by filtering white noise."""
+
+  def __init__(self,
+               n_samples=64000,
+               window_size=257,
+               scale_fn=core.exp_sigmoid,
+               initial_bias=-5.0,
+               name='filtered_noise',
+               hp_freq=None,
+               lp_freq=None,
+               sample_rate=16000
+               ):
+    super().__init__(name=name)
+    self.n_samples = n_samples
+    self.window_size = window_size
+    self.scale_fn = scale_fn
+    self.initial_bias = initial_bias
+    self.hp = hp_freq
+    self.lp = lp_freq
+
+  def get_controls(self, magnitudes):
+    """Convert network outputs into a dictionary of synthesizer controls.
+
+    Args:
+      magnitudes: 3-D Tensor of synthesizer parameters, of shape [batch, time,
+        n_filter_banks].
+
+    Returns:
+      controls: Dictionary of tensors of synthesizer controls.
+    """
+    # Scale the magnitudes.
+    if self.scale_fn is not None:
+      magnitudes = self.scale_fn(magnitudes + self.initial_bias)
+
+    return {'magnitudes': magnitudes}
+
+  def get_signal(self, magnitudes):
+    """Synthesize audio with filtered white noise.
+
+    Args:
+      magnitudes: Magnitudes tensor of shape [batch, n_frames, n_filter_banks].
+        Expects float32 that is strictly positive.
+
+    Returns:
+      signal: A tensor of harmonic waves of shape [batch, n_samples, 1].
+    """
+    batch_size = int(magnitudes.shape[0])
+    if self.hp is not None:
+        # Get frequency range
+        nyquist = sample_rate / 2
+        num_mags = magnitudes.get_shape()[2]
+        freq = np.arange(0,nyquist,nyquist/num_mags)
+  
+        # Null low frequencies
+        frequency_envelopes = tf.convert_to_tensor(freq, tf.float32)
+        magnitudes = tf.where(
+            tf.less_equal(frequency_envelopes, self.hp),
+            tf.zeros_like(magnitudes), magnitudes)
+           
+    if self.lp is not None:
+        # Get frequency range
+        nyquist = sample_rate / 2
+        num_mags = magnitudes.get_shape()[2]
+        freq = np.arange(0,nyquist,nyquist/num_mags)
+  
+         # Null high frequencies
+        frequency_envelopes = tf.convert_to_tensor(freq, tf.float32)
+        magnitudes = tf.where(
+            tf.greater_equal(frequency_envelopes, self.lp),
+            tf.zeros_like(magnitudes), magnitudes)     
+    
+    signal = tf.random.uniform(
+        [batch_size, self.n_samples], minval=-1.0, maxval=1.0)
+    return core.frequency_filter(signal,
+                                 magnitudes,
+                                 window_size=self.window_size)
 
 @gin.register
 class Wavetable(processors.Processor):
