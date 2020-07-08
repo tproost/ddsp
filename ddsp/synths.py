@@ -19,6 +19,7 @@ from ddsp import core
 from ddsp import processors
 import gin
 import tensorflow.compat.v2 as tf
+import numpy as np
 
 
 @gin.register
@@ -170,6 +171,7 @@ class FilteredNoiseHpLp(processors.Processor):
     self.initial_bias = initial_bias
     self.hp = hp_freq
     self.lp = lp_freq
+    self.sample_rate = sample_rate
 
   def get_controls(self, magnitudes):
     """Convert network outputs into a dictionary of synthesizer controls.
@@ -200,7 +202,7 @@ class FilteredNoiseHpLp(processors.Processor):
     batch_size = int(magnitudes.shape[0])
     if self.hp is not None:
         # Get frequency range
-        nyquist = sample_rate / 2
+        nyquist = self.sample_rate / 2
         num_mags = magnitudes.get_shape()[2]
         freq = np.arange(0,nyquist,nyquist/num_mags)
   
@@ -212,7 +214,7 @@ class FilteredNoiseHpLp(processors.Processor):
            
     if self.lp is not None:
         # Get frequency range
-        nyquist = sample_rate / 2
+        nyquist = self.sample_rate / 2
         num_mags = magnitudes.get_shape()[2]
         freq = np.arange(0,nyquist,nyquist/num_mags)
   
